@@ -23,6 +23,7 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
+import { CcswapAutoSettings } from "./ccswap.ts";
 import { UsageModelFilter } from "./usage.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
 import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
@@ -1603,6 +1604,8 @@ export const ServerSettings = Schema.Struct({
 
   /** Sent by the Usage tab with each summary request to this environment; edit in settings.json. Invalid values are ignored. */
   usageModelFilter: ForwardCompatibleOptional(UsageModelFilter),
+
+  ccswapAuto: CcswapAutoSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -1990,6 +1993,8 @@ export const ServerSettingsPatch = Schema.Struct({
   usageModelAliases: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
   ),
+
+  ccswapAuto: Schema.optionalKey(CcswapAutoSettings),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

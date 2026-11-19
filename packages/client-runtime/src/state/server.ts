@@ -1674,6 +1674,38 @@ export function createServerEnvironmentAtoms<R, E>(
     }),
     updateSettings,
     mutateProviderInstance: updateSettings,
+    ccswapGetState: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:get-state",
+      tag: WS_METHODS.ccswapGetState,
+    }),
+    ccswapAddActive: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:add-active",
+      tag: WS_METHODS.ccswapAddActive,
+    }),
+    ccswapRemoveSlot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:remove-slot",
+      tag: WS_METHODS.ccswapRemoveSlot,
+    }),
+    ccswapSetAlias: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:set-alias",
+      tag: WS_METHODS.ccswapSetAlias,
+    }),
+    ccswapSwitch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:switch",
+      tag: WS_METHODS.ccswapSwitch,
+    }),
+    ccswapProfileAction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:profile-action",
+      tag: WS_METHODS.ccswapProfileAction,
+    }),
+    ccswapSyncT3: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:sync-t3",
+      tag: WS_METHODS.ccswapSyncT3,
+    }),
+    ccswapRunAuto: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:ccswap:run-auto",
+      tag: WS_METHODS.ccswapRunAuto,
+    }),
     prepareAcpRegistryAgent: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:acp-registry:prepare",
       tag: WS_METHODS.serverPrepareAcpRegistryAgent,

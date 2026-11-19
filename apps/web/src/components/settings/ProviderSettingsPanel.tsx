@@ -98,6 +98,7 @@ import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { useSecretSources } from "./SecretSourceInput";
 import { TextGeneratorsSettings } from "./TextGeneratorsSettings";
 import { UsageProviderSettings } from "./UsageProviderSettings";
+import { ClaudeAccountsSettings } from "./ClaudeAccountsSettings";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
@@ -357,7 +358,8 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
     if (
       !target.scoped &&
       (searchTargetId === searchableSetting("provider-health-check-interval").id ||
-        searchTargetId === searchableSetting("usage-providers").id) &&
+        searchTargetId === searchableSetting("usage-providers").id ||
+        searchTargetId === searchableSetting("claude-accounts").id) &&
       !selectedEnvironmentCanRenderSettings &&
       searchableEnvironmentId !== undefined
     ) {
@@ -1091,6 +1093,13 @@ export function EnvironmentProviderSettings({
         environmentId={environmentId}
         environmentLabel={environmentLabel}
         sources={settings.usageLimitSources}
+        readOnly={readOnly}
+      />
+
+      <ClaudeAccountsSettings
+        key={`ccswap:${environmentId}`}
+        environmentId={environmentId}
+        autoSettings={settings.ccswapAuto}
         readOnly={readOnly}
       />
 

@@ -26,6 +26,7 @@ import { rpcInitialItems } from "./rpcInitialItems.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import {
   AcpRegistryOperationError,
+  CcswapOperationError,
   CommandId,
   authScopeResponse,
   AuthAccessStreamError,
@@ -112,6 +113,7 @@ import {
 import { RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import { CcswapService } from "./provider/CcswapService.ts";
 import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
@@ -1537,6 +1539,13 @@ export const layerWsRpc = (
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+      const ccswapOption = yield* Effect.serviceOption(CcswapService);
+      const withCcswap = <A>(
+        run: (ccswap: CcswapService["Service"]) => Effect.Effect<A, CcswapOperationError>,
+      ) =>
+        Option.isSome(ccswapOption)
+          ? run(ccswapOption.value)
+          : Effect.fail(new CcswapOperationError({ message: "CcswapService not available" }));
       const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
       const acpRegistryCatalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
       const acpRegistryRuntimeCoordinator =
@@ -2565,6 +2574,14 @@ export const layerWsRpc = (
             };
           }),
         [WS_METHODS.mcpAppsCallTool]: (input) => mcpAppRequests.callTool(input),
+        [WS_METHODS.ccswapGetState]: (input) => withCcswap((c) => c.getState(input)),
+        [WS_METHODS.ccswapAddActive]: (input) => withCcswap((c) => c.addActive(input)),
+        [WS_METHODS.ccswapRemoveSlot]: (input) => withCcswap((c) => c.removeSlot(input)),
+        [WS_METHODS.ccswapSetAlias]: (input) => withCcswap((c) => c.setAlias(input)),
+        [WS_METHODS.ccswapSwitch]: (input) => withCcswap((c) => c.switchAccount(input)),
+        [WS_METHODS.ccswapProfileAction]: (input) => withCcswap((c) => c.profileAction(input)),
+        [WS_METHODS.ccswapSyncT3]: (input) => withCcswap((c) => c.syncT3Instances(input)),
+        [WS_METHODS.ccswapRunAuto]: (input) => withCcswap((c) => c.runAutoCheck(input)),
         [WS_METHODS.mcpAppsToolInfo]: (input) => mcpAppRequests.toolInfo(input),
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
         [WS_METHODS.mcpAppsReadResource]: (input) => mcpAppRequests.readResource(input),

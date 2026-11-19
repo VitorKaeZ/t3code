@@ -27,6 +27,21 @@ import {
   PeerLinkSummary,
 } from "./peerLink.ts";
 import {
+  CcswapAddActiveInput,
+  CcswapGetStateInput,
+  CcswapOperationError,
+  CcswapProfileActionInput,
+  CcswapRemoveSlotInput,
+  CcswapRunAutoInput,
+  CcswapRunAutoResult,
+  CcswapSetAliasInput,
+  CcswapStateSnapshot,
+  CcswapSwitchInput,
+  CcswapSwitchResult,
+  CcswapSyncT3Input,
+  CcswapSyncT3Result,
+} from "./ccswap.ts";
+import {
   ChatGptReconnectProfileInput,
   ChatGptReconnectProfile,
   ChatGptImportProfileInput,
@@ -534,6 +549,14 @@ export const WS_METHODS = {
   serverGetNpmRelease: "server.getNpmRelease",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  ccswapGetState: "ccswap.getState",
+  ccswapAddActive: "ccswap.addActive",
+  ccswapRemoveSlot: "ccswap.removeSlot",
+  ccswapSetAlias: "ccswap.setAlias",
+  ccswapSwitch: "ccswap.switch",
+  ccswapProfileAction: "ccswap.profileAction",
+  ccswapSyncT3: "ccswap.syncT3",
+  ccswapRunAuto: "ccswap.runAuto",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverCommitDesktopUpdate: "server.commitDesktopUpdate",
@@ -737,6 +760,56 @@ const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
+});
+
+const CcswapRpcError = Schema.Union([CcswapOperationError, EnvironmentAuthorizationError]);
+
+const WsCcswapGetStateRpc = Rpc.make(WS_METHODS.ccswapGetState, {
+  payload: CcswapGetStateInput,
+  success: CcswapStateSnapshot,
+  error: CcswapRpcError,
+});
+
+const WsCcswapAddActiveRpc = Rpc.make(WS_METHODS.ccswapAddActive, {
+  payload: CcswapAddActiveInput,
+  success: CcswapStateSnapshot,
+  error: CcswapRpcError,
+});
+
+const WsCcswapRemoveSlotRpc = Rpc.make(WS_METHODS.ccswapRemoveSlot, {
+  payload: CcswapRemoveSlotInput,
+  success: CcswapStateSnapshot,
+  error: CcswapRpcError,
+});
+
+const WsCcswapSetAliasRpc = Rpc.make(WS_METHODS.ccswapSetAlias, {
+  payload: CcswapSetAliasInput,
+  success: CcswapStateSnapshot,
+  error: CcswapRpcError,
+});
+
+const WsCcswapSwitchRpc = Rpc.make(WS_METHODS.ccswapSwitch, {
+  payload: CcswapSwitchInput,
+  success: CcswapSwitchResult,
+  error: CcswapRpcError,
+});
+
+const WsCcswapProfileActionRpc = Rpc.make(WS_METHODS.ccswapProfileAction, {
+  payload: CcswapProfileActionInput,
+  success: CcswapStateSnapshot,
+  error: CcswapRpcError,
+});
+
+const WsCcswapSyncT3Rpc = Rpc.make(WS_METHODS.ccswapSyncT3, {
+  payload: CcswapSyncT3Input,
+  success: CcswapSyncT3Result,
+  error: CcswapRpcError,
+});
+
+const WsCcswapRunAutoRpc = Rpc.make(WS_METHODS.ccswapRunAuto, {
+  payload: CcswapRunAutoInput,
+  success: CcswapRunAutoResult,
+  error: CcswapRpcError,
 });
 
 const ProviderSetupRpcError = Schema.Union([ProviderSetupError, EnvironmentAuthorizationError]);
@@ -2264,6 +2337,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsCcswapGetStateRpc,
+  WsCcswapAddActiveRpc,
+  WsCcswapRemoveSlotRpc,
+  WsCcswapSetAliasRpc,
+  WsCcswapSwitchRpc,
+  WsCcswapProfileActionRpc,
+  WsCcswapSyncT3Rpc,
+  WsCcswapRunAutoRpc,
   WsProviderConsumeResetCreditRpc,
   WsProviderAuthStartRpc,
   WsProviderAuthCompleteRpc,

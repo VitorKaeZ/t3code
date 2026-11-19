@@ -992,6 +992,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "claude-accounts",
+    title: "Claude accounts (ccswap)",
+    to: "/settings/providers",
+    searchTerms: [
+      "ccswap claude accounts slots switch profiles auto-switch quota usage 5h 7d sync",
+    ],
+    providerSettingsOnly: true,
+  },
+  {
     id: "usage-providers",
     title: "Usage providers",
     to: "/settings/providers",
