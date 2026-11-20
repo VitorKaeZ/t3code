@@ -11,8 +11,34 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vite-plus/test";
 
 import { ServerSettingsService } from "../serverSettings.ts";
-import { CcswapService } from "./CcswapService.ts";
+import { CcswapService, pickTurnSlot, readStoredUsageEntry } from "./CcswapService.ts";
 import { ProviderRegistry } from "./ProviderRegistry.ts";
+
+effectIt("pickTurnSlot keeps the quota until the threshold and prefers accounts below it", () => {
+  const candidates = [
+    { slot: 2, pct: 97 },
+    { slot: 3, pct: 40 },
+    { slot: 4, pct: null },
+  ];
+  expect(pickTurnSlot({ currentPct: 80, candidates, threshold: 95 })).toBeNull();
+  expect(pickTurnSlot({ currentPct: null, candidates, threshold: 95 })).toBeNull();
+  expect(pickTurnSlot({ currentPct: 96, candidates, threshold: 95 })).toBe(3);
+  const onlyHigh = [{ slot: 2, pct: 97 }];
+  expect(pickTurnSlot({ currentPct: 96, candidates: onlyHigh, threshold: 95 })).toBeNull();
+  expect(pickTurnSlot({ currentPct: 100, candidates: onlyHigh, threshold: 95 })).toBe(2);
+  expect(
+    pickTurnSlot({ currentPct: 100, candidates: [{ slot: 2, pct: 100 }], threshold: 95 }),
+  ).toBeNull();
+});
+
+effectIt("readStoredUsageEntry reads the Python cache and the fields older T3 builds wrote", () => {
+  expect(
+    readStoredUsageEntry({ usage: { "5h": {} }, at: 10, blocked_until: 20, strikes: 2 }),
+  ).toEqual({ usage: { "5h": {} }, at: 10, blocked_until: 20, strikes: 2 });
+  expect(
+    readStoredUsageEntry({ fetched_at: 10, rate_limited_until: 20, rate_limit_strikes: 2 }),
+  ).toEqual({ at: 10, blocked_until: 20, strikes: 2 });
+});
 
 const makeTestLayer = (input: {
   readonly homeDir: string;
@@ -176,6 +202,23 @@ effectIt.layer(NodeServices.layer)("CcswapService", (it) => {
           const autoRes = yield* ccswap.runAutoCheck({ dryRun: false });
           expect(autoRes.outcome).toBe("switched");
           expect(autoRes.switchedToSlot).toBe(2);
+
+          // The usage cache keeps the field names the Python ccswap and ccremote read.
+          const usageCache = JSON.parse(
+            yield* fs.readFileString(path.join(ccswapRoot, "usage.json")),
+          ) as Record<string, Record<string, unknown>>;
+          expect(typeof usageCache["alice@example.com"]?.["at"]).toBe("number");
+          expect(usageCache["alice@example.com"]).not.toHaveProperty("fetched_at");
+
+          // A T3 turn on the exhausted account moves to the one with quota.
+          const slotOne = ProviderInstanceId.make("ccswap-slot-1");
+          const auto = (yield* settings.getSettings).ccswapAuto;
+          yield* settings.updateSettings({ ccswapAuto: { ...auto, enabled: false } });
+          expect(yield* ccswap.resolveTurnInstance({ instanceId: slotOne })).toBe(slotOne);
+          yield* settings.updateSettings({ ccswapAuto: { ...auto, enabled: true } });
+          expect(yield* ccswap.resolveTurnInstance({ instanceId: slotOne })).toBe(
+            ProviderInstanceId.make("ccswap-slot-2"),
+          );
         }).pipe(Effect.provide(layer));
       }),
   );

@@ -67,11 +67,33 @@ interface StoredSlot {
   readonly added_at?: string | undefined;
 }
 
+/**
+ * One account's entry in the usage.json cache shared with the Python ccswap and ccremote,
+ * so the field names follow theirs (`at`, `blocked_until`, `strikes`, `error`).
+ */
 interface StoredUsageEntry {
-  readonly fetched_at?: number;
+  readonly at?: number;
   readonly usage?: JsonRecord;
-  readonly rate_limited_until?: number;
-  readonly rate_limit_strikes?: number;
+  readonly blocked_until?: number;
+  readonly strikes?: number;
+  readonly error?: string;
+}
+
+/** Reads an entry, accepting the field names older T3 builds wrote. */
+export function readStoredUsageEntry(raw: unknown): StoredUsageEntry {
+  const record = asRecord(raw);
+  const usage = record["usage"];
+  const at = asNumber(record["at"]) ?? asNumber(record["fetched_at"]);
+  const blockedUntil = asNumber(record["blocked_until"]) ?? asNumber(record["rate_limited_until"]);
+  const strikes = asNumber(record["strikes"]) ?? asNumber(record["rate_limit_strikes"]);
+  const error = asString(record["error"]);
+  return {
+    ...(at === undefined ? {} : { at }),
+    ...(usage && typeof usage === "object" ? { usage: usage as JsonRecord } : {}),
+    ...(blockedUntil === undefined ? {} : { blocked_until: blockedUntil }),
+    ...(strikes === undefined ? {} : { strikes }),
+    ...(error === undefined ? {} : { error }),
+  };
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -218,6 +240,29 @@ function worstWindow(
 
 function worstPct(usage: JsonRecord | null, models: ReadonlyArray<string>): number | null {
   return worstWindow(usage, models)?.pct ?? null;
+}
+
+/**
+ * Picks the slot a turn should run on. The current account keeps its quota until the
+ * threshold; past it, the least used account below the threshold wins, and an account
+ * above the threshold is only taken once the current one is fully exhausted.
+ */
+export function pickTurnSlot(input: {
+  readonly currentPct: number | null;
+  readonly candidates: ReadonlyArray<{ readonly slot: number; readonly pct: number | null }>;
+  readonly threshold: number;
+}): number | null {
+  const { currentPct, threshold } = input;
+  if (currentPct === null || currentPct < threshold) return null;
+  const known = input.candidates.flatMap((c) => (c.pct === null ? [] : [{ ...c, pct: c.pct }]));
+  const leastUsed = (limit: number) =>
+    known
+      .filter((c) => c.pct < limit)
+      .reduce<{ slot: number; pct: number } | null>(
+        (best, c) => (best === null || c.pct < best.pct ? c : best),
+        null,
+      )?.slot ?? null;
+  return leastUsed(threshold) ?? (currentPct >= HARD_LIMIT ? leastUsed(HARD_LIMIT) : null);
 }
 
 function availableAt(
@@ -589,11 +634,10 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
         const nowMs = yield* Clock.currentTimeMillis;
         const now = nowMs / 1000;
         const cache = yield* readJsonRecord(paths.usageFile);
-        const entry = asRecord(cache[input.email]) as StoredUsageEntry;
-        const fetchedAt = asNumber(entry.fetched_at) ?? 0;
-        const cachedUsage =
-          entry.usage && typeof entry.usage === "object" ? (entry.usage as JsonRecord) : null;
-        const rateLimitedUntil = asNumber(entry.rate_limited_until) ?? 0;
+        const entry = readStoredUsageEntry(cache[input.email]);
+        const fetchedAt = entry.at ?? 0;
+        const cachedUsage = entry.usage ?? null;
+        const rateLimitedUntil = entry.blocked_until ?? 0;
 
         if (!input.forceRefresh && cachedUsage && now - fetchedAt < USAGE_CACHE_TTL_S) {
           return {
@@ -653,11 +697,8 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
         const nextCache = yield* readJsonRecord(paths.usageFile);
         if (response.ok) {
           const parsed = parseUsagePayload(response.body);
-          nextCache[input.email] = {
-            fetched_at: now,
-            usage: parsed,
-            rate_limit_strikes: 0,
-          };
+          const fresh: StoredUsageEntry = { usage: parsed, at: now };
+          nextCache[input.email] = fresh;
           yield* fs.makeDirectory(paths.ccswapRoot, { recursive: true });
           yield* writeJsonRecordAtomic(paths.usageFile, nextCache, 0o600);
           return {
@@ -669,17 +710,19 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
         }
 
         if (response.status === 429) {
-          const strikes = (asNumber(entry.rate_limit_strikes) ?? 0) + 1;
+          const strikes = (entry.strikes ?? 0) + 1;
           const parsedRetry = response.retryAfter ? Number.parseFloat(response.retryAfter) : 0;
           const retryS = Math.max(
             Number.isFinite(parsedRetry) && parsedRetry > 0 ? parsedRetry : 0,
             Math.min(USAGE_CACHE_TTL_S * Math.pow(2, strikes - 1), USAGE_STALE_MAX_S),
           );
-          nextCache[input.email] = {
-            ...asRecord(nextCache[input.email]),
-            rate_limited_until: now + retryS,
-            rate_limit_strikes: strikes,
+          const blocked: StoredUsageEntry = {
+            ...readStoredUsageEntry(nextCache[input.email]),
+            blocked_until: now + retryS,
+            error: "HTTP 429",
+            strikes,
           };
+          nextCache[input.email] = blocked;
           yield* fs.makeDirectory(paths.ccswapRoot, { recursive: true });
           yield* writeJsonRecordAtomic(paths.usageFile, nextCache, 0o600);
           if (cachedUsage && now - fetchedAt < USAGE_STALE_MAX_S) {
@@ -823,10 +866,9 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
             contractUsage = res.contractUsage;
           } else {
             const cache = yield* readJsonRecord(paths.usageFile).pipe(Effect.mapError(mapOpError));
-            const entry = asRecord(cache[slotEmail(slot)]) as StoredUsageEntry;
-            const cachedUsage =
-              entry.usage && typeof entry.usage === "object" ? (entry.usage as JsonRecord) : null;
-            const fetchedAt = asNumber(entry.fetched_at);
+            const entry = readStoredUsageEntry(cache[slotEmail(slot)]);
+            const cachedUsage = entry.usage ?? null;
+            const fetchedAt = entry.at;
             if (cachedUsage) {
               contractUsage = toContractUsage(
                 cachedUsage,
@@ -1577,7 +1619,7 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
                 Effect.orElseSucceed(() => null),
               );
               const auto = settings?.ccswapAuto;
-              if (!settings || !auto?.autoRouteT3Turns) return input.instanceId;
+              if (!settings || !auto?.enabled || !auto.autoRouteT3Turns) return input.instanceId;
 
               const currentSlot = parseCcswapSlotFromInstanceId(input.instanceId);
               if (
@@ -1628,12 +1670,11 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
                       forceRefresh: false,
                     });
                     const currentPct = worstPct(currentUsage.rawUsage, models);
-                    if (currentPct !== null && currentPct < auto.threshold) {
+                    if (currentPct === null || currentPct < auto.threshold) {
                       return input.instanceId;
                     }
 
-                    let bestInstance: ProviderInstanceId | null = null;
-                    let bestPct = Number.POSITIVE_INFINITY;
+                    const candidates: Array<{ slot: number; pct: number | null }> = [];
                     for (const [num, slot] of scoped.entries()) {
                       if (num === effectiveSlot) continue;
                       const candidateId = slotInstanceId(num);
@@ -1652,13 +1693,14 @@ export class CcswapService extends Context.Service<CcswapService, CcswapServiceS
                         isGlobalActive: false,
                         forceRefresh: false,
                       });
-                      const pct = worstPct(res.rawUsage, models);
-                      if (pct !== null && pct < HARD_LIMIT && pct < bestPct) {
-                        bestPct = pct;
-                        bestInstance = candidateId;
-                      }
+                      candidates.push({ slot: num, pct: worstPct(res.rawUsage, models) });
                     }
-                    return bestInstance ?? input.instanceId;
+                    const target = pickTurnSlot({
+                      currentPct,
+                      candidates,
+                      threshold: auto.threshold,
+                    });
+                    return target === null ? input.instanceId : slotInstanceId(target);
                   }),
                 )
                 .pipe(Effect.orElseSucceed(() => input.instanceId));

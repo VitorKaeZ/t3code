@@ -3,9 +3,11 @@ import { appendUserInputAttachmentPaths } from "../provider/userInputAttachments
 import type { ChatAttachment, OrchestrationV2Command } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import { CcswapService } from "../provider/CcswapService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 
 import * as AttachmentClaims from "./AttachmentClaims.ts";
@@ -85,11 +87,38 @@ const withGuestAttachments = Effect.fn("ThreadMessageIntake.withGuestAttachments
   return { ...command, attachments: message?.attachments ?? [] };
 });
 
+/** Moves a new turn to a Claude account with quota left, when ccswap routing is on. */
+const withAccountWithQuota = Effect.fn("ThreadMessageIntake.withAccountWithQuota")(function* (
+  command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
+) {
+  // A steer joins the active run, which keeps the account it started on.
+  if (command.dispatchMode.type === "steer_active") return command;
+  const ccswap = yield* Effect.serviceOption(CcswapService);
+  if (Option.isNone(ccswap)) return command;
+  const threads = yield* ThreadManagement.ThreadManagementService;
+  const selection =
+    command.modelSelection ??
+    (yield* threads.getThreadRecords(command.threadId, []).pipe(
+      Effect.map((projection) => projection.thread.modelSelection),
+      Effect.orElseSucceed(() => null),
+    ));
+  if (selection === null) return command;
+  const instanceId = yield* ccswap.value.resolveTurnInstance({
+    instanceId: selection.instanceId,
+    model: selection.model,
+  });
+  return instanceId === selection.instanceId
+    ? command
+    : { ...command, modelSelection: { ...selection, instanceId } };
+});
+
 export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(function* (
   incoming: OrchestrationV2Command,
 ) {
   const command =
-    incoming.type === "message.dispatch" ? yield* withGuestAttachments(incoming) : incoming;
+    incoming.type === "message.dispatch"
+      ? yield* withAccountWithQuota(yield* withGuestAttachments(incoming))
+      : incoming;
   const threads = yield* ThreadManagement.ThreadManagementService;
   if (command.type === "runtime-request.respond" && command.attachmentsByQuestionId) {
     const config = yield* ServerConfig.ServerConfig;

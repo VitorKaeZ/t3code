@@ -57,7 +57,7 @@ export const CcswapAutoSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(60)),
   ),
   modelFilter: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  autoRouteT3Turns: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  autoRouteT3Turns: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type CcswapAutoSettings = typeof CcswapAutoSettings.Type;
 

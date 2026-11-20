@@ -707,6 +707,19 @@ export function ClaudeAccountsSettings({
       />
 
       <SettingsRow
+        title="Move T3 threads to an account with quota"
+        description="Each new message on a ccswap account past the threshold runs on the least used account instead. Needs auto-switch on."
+        control={
+          <Switch
+            aria-label="Move T3 threads to an account with quota"
+            checked={autoSettings.autoRouteT3Turns}
+            disabled={readOnly || !autoSettings.enabled}
+            onCheckedChange={(autoRouteT3Turns) => patchAuto({ autoRouteT3Turns })}
+          />
+        }
+      />
+
+      <SettingsRow
         title="Auto-switch rules"
         description={
           snapshot?.lastAutoMessage
